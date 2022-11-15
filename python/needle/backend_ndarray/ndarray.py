@@ -5,6 +5,7 @@ import numpy as np
 from . import ndarray_backend_numpy
 from . import ndarray_backend_cpu
 
+
 # math.prod not in Python 3.7
 def prod(x):
     return reduce(operator.mul, x, 1)
@@ -200,8 +201,8 @@ class NDArray:
         """Return true if array is compact in memory and internal size equals product
         of the shape dimensions"""
         return (
-            self._strides == self.compact_strides(self._shape)
-            and prod(self.shape) == self._handle.size
+                self._strides == self.compact_strides(self._shape)
+                and prod(self.shape) == self._handle.size
         )
 
     def compact(self):
@@ -241,7 +242,11 @@ class NDArray:
         """
 
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        # using new_shape to compute the corresponding strides
+        strides = tuple(prod(new_shape[i + 1:]) for i in range(len(new_shape)))
+        return NDArray.make(
+            new_shape, strides=strides, device=self.device, handle=self._handle
+        )
         ### END YOUR SOLUTION
 
     def permute(self, new_axes):
@@ -264,7 +269,14 @@ class NDArray:
         """
 
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        assert len(new_axes) == len(self.shape)
+        shape = tuple(self.shape[i] for i in new_axes)
+        # find the corresponding strides of new idx
+        strides = tuple(self.strides[i] for i in new_axes)
+
+        return NDArray.make(
+            shape, strides=strides, device=self.device, handle=self._handle
+        )
         ### END YOUR SOLUTION
 
     def broadcast_to(self, new_shape):
@@ -285,7 +297,19 @@ class NDArray:
         """
 
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        assert len(new_shape) >= len(self.shape), "Cannot broadcast to a shape smaller than the original"
+        broadcastable = True
+        strides = [0] * (len(new_shape) - len(self.shape)) + list(self.shape)
+        for i in range(len(new_shape) - len(self.shape), len(new_shape)):
+            if (strides[i] != new_shape[i] and strides[i] != 1):
+                broadcastable = False
+                break
+            else:
+                strides[i] = 0 if strides[i] == 1 else prod(strides[i + 1:])
+        assert broadcastable == True, "Cannot broadcast %s to %s" % (str(self.shape), str(new_shape))
+        return NDArray.make(
+            new_shape, strides=tuple(strides), device=self.device, handle=self._handle
+        )
         ### END YOUR SOLUTION
 
     ### Get and set elements
@@ -348,7 +372,18 @@ class NDArray:
         assert len(idxs) == self.ndim, "Need indexes equal to number of dimensions"
 
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        # idxs: ndim * slice(start, stop, step)
+        offset = 0
+        shape = [0] * len(idxs)
+        strides = [0] * len(idxs)
+        for i, idx in enumerate(idxs):
+            offset += idxs[i].start * self.strides[i]
+            shape[i] = math.ceil((min(idx.stop, self.shape[i]) - idx.start) / idx.step)
+            strides[i] = self.strides[i] * idx.step
+
+        return NDArray.make(
+            tuple(shape), strides=tuple(strides), device=self.device, handle=self._handle,
+            offset=offset)
         ### END YOUR SOLUTION
 
     def __setitem__(self, idxs, other):
@@ -485,7 +520,7 @@ class NDArray:
 
         # if the matrix is aligned, use tiled matrix multiplication
         if hasattr(self.device, "matmul_tiled") and all(
-            d % self.device.__tile_size__ == 0 for d in (m, n, p)
+                d % self.device.__tile_size__ == 0 for d in (m, n, p)
         ):
 
             def tile(a, tile):
