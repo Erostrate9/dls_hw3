@@ -43,8 +43,16 @@ void Fill(AlignedArray* out, scalar_t val) {
   }
 }
 
-
-
+void UpdateIndices(std::vector<uint32_t>& indices, std::vector<uint32_t> shape) {
+  int i = indices.size() - 1;
+  indices[i]++;
+  while (indices[i] == shape[i] && i>=0) {
+    indices[i--] = 0;
+    if (i >= 0) {
+      indices[i]++;
+    }
+  }
+}
 
 void Compact(const AlignedArray& a, AlignedArray* out, std::vector<uint32_t> shape,
              std::vector<uint32_t> strides, size_t offset) {
@@ -63,7 +71,21 @@ void Compact(const AlignedArray& a, AlignedArray* out, std::vector<uint32_t> sha
    *  function will implement here, so we won't repeat this note.)
    */
   /// BEGIN YOUR SOLUTION
-  
+  std::vector<uint32_t> indices(shape.size(),0);
+  size_t total = 1;
+  for (auto const& v: shape){
+    total *= v;
+  }
+  for (size_t i=0; i<total; ++i){
+    uint32_t v_idx = offset;
+    for (size_t j=0; j<shape.size(); ++j){
+        v_idx += indices[j] * strides[j];
+    }
+    out->ptr[i] = a.ptr[v_idx];
+    if (i < total-1){
+        UpdateIndices(indices, shape);
+    }
+  }
   /// END YOUR SOLUTION
 }
 
@@ -80,7 +102,21 @@ void EwiseSetitem(const AlignedArray& a, AlignedArray* out, std::vector<uint32_t
    *   offset: offset of the *out* array (not a, which has zero offset, being compact)
    */
   /// BEGIN YOUR SOLUTION
-  
+  std::vector<uint32_t> indices(shape.size(),0);
+  size_t total = 1;
+  for (auto const& v: shape){
+    total *= v;
+  }
+  for (size_t i=0; i<total; ++i){
+    uint32_t v_idx = offset;
+    for (size_t j=0; j<shape.size(); ++j){
+        v_idx += indices[j] * strides[j];
+    }
+    out->ptr[v_idx] = a.ptr[i];
+    if (i < total-1){
+        UpdateIndices(indices, shape);
+    }
+  }
   /// END YOUR SOLUTION
 }
 
@@ -101,7 +137,21 @@ void ScalarSetitem(const size_t size, scalar_t val, AlignedArray* out, std::vect
    */
 
   /// BEGIN YOUR SOLUTION
-  
+    std::vector<uint32_t> indices(shape.size(),0);
+  size_t total = 1;
+  for (auto const& v: shape){
+    total *= v;
+  }
+  for (size_t i=0; i<total; ++i){
+    uint32_t v_idx = offset;
+    for (size_t j=0; j<shape.size(); ++j){
+        v_idx += indices[j] * strides[j];
+    }
+    out->ptr[v_idx] = val;
+    if (i < total-1){
+        UpdateIndices(indices, shape);
+    }
+  }
   /// END YOUR SOLUTION
 }
 
