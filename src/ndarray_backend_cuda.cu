@@ -74,7 +74,7 @@ void Fill(CudaArray* out, scalar_t val) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Compact and setitem cals
+// Compact and setitem calls
 ////////////////////////////////////////////////////////////////////////////////
 
 // Untility function to convert contiguous index i to memory location from strides
@@ -85,7 +85,7 @@ void Fill(CudaArray* out, scalar_t val) {
 __global__ void CompactKernel(const scalar_t* a, scalar_t* out, size_t size, CudaVec shape,
                               CudaVec strides, size_t offset) {
   /**
-   * The CUDA kernel for the compact opeation.  This should effectively map a single entry in the 
+   * The CUDA kernel for the compact operation.  This should effectively map a single entry in the
    * non-compact input a, to the corresponding item (at location gid) in the compact array out.
    * 
    * Args:
@@ -99,7 +99,14 @@ __global__ void CompactKernel(const scalar_t* a, scalar_t* out, size_t size, Cud
   size_t gid = blockIdx.x * blockDim.x + threadIdx.x;
 
   /// BEGIN YOUR SOLUTION
-  
+  if (gid < size){
+    size_t idx = 0, id = gid;
+    for (size_t i = shape.size; i>0; --i){
+        idx += (id % shape.data[i-1]) * strides.data[i-1];
+        id /= shape.data[i-1];
+    }
+    out[gid] = a[offset + idx];
+  }
   /// END YOUR SOLUTION
 }
 
@@ -108,12 +115,12 @@ void Compact(const CudaArray& a, CudaArray* out, std::vector<uint32_t> shape,
   /**
    * Compact an array in memory.  Unlike the C++ version, in CUDA this will primarily call the 
    * relevant CUDA kernel.  In this case, we illustrate how you should set this up (i.e., we give 
-   * you the code for this fuction, and also the prototype for the CompactKernel() function).  For
+   * you the code for this function, and also the prototype for the CompactKernel() function).  For
    * the functions after this, however, you'll need to define these kernels as you see fit to 
    * execute the underlying function.
    * 
    * Args:
-   *   a: non-compact represntation of the array, given as input
+   *   a: non-compact representation of the array, given as input
    *   out: compact version of the array to be written
    *   shape: shapes of each dimension for a and out
    *   strides: strides of the *a* array (not out, which has compact strides)
@@ -128,11 +135,39 @@ void Compact(const CudaArray& a, CudaArray* out, std::vector<uint32_t> shape,
 
 
 
+__global__ void EwiseSetitemKernel(const scalar_t* a, scalar_t* out, size_t size, CudaVec shape,
+                              CudaVec strides, size_t offset) {
+  /**
+   * The CUDA kernel for the EwiseSetitem operation.
+   *
+   * Args:
+   *   a: CUDA pointer to a array
+   *   out: CUDA point to out array
+   *   size: size of out array
+   *   shape: vector of shapes of a and out arrays (of type CudaVec, for past passing to CUDA kernel)
+   *   strides: vector of strides of out array
+   *   offset: offset of out array
+   */
+  size_t gid = blockIdx.x * blockDim.x + threadIdx.x;
+
+  /// BEGIN YOUR SOLUTION
+  if (gid < size){
+    size_t idx = 0, id = gid;
+    for (size_t i = shape.size; i>0; --i){
+        idx += (id % shape.data[i-1]) * strides.data[i-1];
+        id /= shape.data[i-1];
+    }
+    out[offset + idx] = a[gid];
+  }
+  /// END YOUR SOLUTION
+}
+
+
 
 void EwiseSetitem(const CudaArray& a, CudaArray* out, std::vector<uint32_t> shape,
                   std::vector<uint32_t> strides, size_t offset) {
   /**
-   * Set items in a (non-compact) array using CUDA.  Yyou will most likely want to implement a
+   * Set items in a (non-compact) array using CUDA.  You will most likely want to implement a
    * EwiseSetitemKernel() function, similar to those above, that will do the actual work.
    * 
    * Args:
@@ -143,22 +178,51 @@ void EwiseSetitem(const CudaArray& a, CudaArray* out, std::vector<uint32_t> shap
    *   offset: offset of the *out* array (not a, which has zero offset, being compact)
    */
   /// BEGIN YOUR SOLUTION
-  
+    CudaDims dim = CudaOneDim(out->size);
+    EwiseSetitemKernel<<<dim.grid, dim.block>>>(a.ptr, out->ptr, a.size, VecToCuda(shape),
+                                         VecToCuda(strides), offset);
   /// END YOUR SOLUTION
 }
 
 
 
+__global__ void ScalarSetitemKernel(const scalar_t val, scalar_t* out, size_t size, CudaVec shape,
+                              CudaVec strides, size_t offset) {
+  /**
+   * The CUDA kernel for the ScalarSetitem operation.
+   *
+   * Args:
+   *   size: number of elements to write in out array (note that this will not be the same as
+   *         out.size, because out is a non-compact subset array);  it _will_ be the same as the
+   *         product of items in shape, but convenient to just pass it here.
+   *   val: scalar value to write to
+   *   out: non-compact array whose items are to be written
+   *   shape: shapes of each dimension of out
+   *   strides: strides of the out array
+   *   offset: offset of the out array
+   */
+  size_t gid = blockIdx.x * blockDim.x + threadIdx.x;
 
+  /// BEGIN YOUR SOLUTION
+  if (gid < size){
+    size_t idx = 0, id = gid;
+    for (size_t i = shape.size; i>0; --i){
+        idx += (id % shape.data[i-1]) * strides.data[i-1];
+        id /= shape.data[i-1];
+    }
+    out[offset + idx] = val;
+  }
+  /// END YOUR SOLUTION
+}
 void ScalarSetitem(size_t size, scalar_t val, CudaArray* out, std::vector<uint32_t> shape,
                    std::vector<uint32_t> strides, size_t offset) {
   /**
    * Set items is a (non-compact) array
    * 
    * Args:
-   *   size: number of elements to write in out array (note that this will note be the same as
+   *   size: number of elements to write in out array (note that this will not be the same as
    *         out.size, because out is a non-compact subset array);  it _will_ be the same as the 
-   *         product of items in shape, but covenient to just pass it here.
+   *         product of items in shape, but convenient to just pass it here.
    *   val: scalar value to write to
    *   out: non-compact array whose items are to be written
    *   shape: shapes of each dimension of out
@@ -166,7 +230,9 @@ void ScalarSetitem(size_t size, scalar_t val, CudaArray* out, std::vector<uint32
    *   offset: offset of the out array
    */
   /// BEGIN YOUR SOLUTION
-  
+    CudaDims dim = CudaOneDim(out->size);
+    ScalarSetitemKernel<<<dim.grid, dim.block>>>(val, out->ptr, size, VecToCuda(shape),
+                                         VecToCuda(strides), offset);
   /// END YOUR SOLUTION
 }
 
@@ -221,6 +287,79 @@ void ScalarAdd(const CudaArray& a, scalar_t val, CudaArray* out) {
  */
 
 /// BEGIN YOUR SOLUTION
+// macros BEGIN
+#define KERNEL_LEFT size_t gid = blockIdx.x * blockDim.x + threadIdx.x; \
+  if (gid < size) out[gid]
+
+#define INIT_DIM CudaDims dim = CudaOneDim(out->size)
+
+#define EWISE_BINARY_KERNEL <<<dim.grid, dim.block>>>(a.ptr, b.ptr, out->ptr, out->size)
+
+#define EWISE_UNARY_KERNEL <<<dim.grid, dim.block>>>(a.ptr, out->ptr, out->size)
+
+#define SCALAR_BINARY_KERNEL <<<dim.grid, dim.block>>>(a.ptr, val, out->ptr, out->size)
+
+// macros END
+
+//  *   - EwiseMul, ScalarMul
+__global__ void EwiseMulKernel(const scalar_t* a, const scalar_t* b, scalar_t* out, size_t size) {
+    KERNEL_LEFT = a[gid] * b[gid];
+}
+void EwiseMul(const CudaArray& a, const CudaArray& b, CudaArray* out) {
+  /**
+   * Multiply together two CUDA array
+   */
+  INIT_DIM;
+  EwiseMulKernel EWISE_BINARY_KERNEL;
+}
+
+__global__ void ScalarMulKernel(const scalar_t* a, scalar_t val, scalar_t* out, size_t size) {
+    KERNEL_LEFT = a[gid] * val;
+}
+void ScalarMul(const CudaArray& a, scalar_t val, CudaArray* out) {
+  /**
+   * Add together a CUDA array and a scalar value.
+   */
+  INIT_DIM;
+  ScalarMulKernel SCALAR_BINARY_KERNEL;
+}
+
+//  *   - EwiseDiv, ScalarDiv
+__global__ void EwiseDivKernel(const scalar_t* a, const scalar_t* b, scalar_t* out, size_t size) {
+    KERNEL_LEFT = a[gid] / b[gid];
+}
+void EwiseDiv(const CudaArray& a, const CudaArray& b, CudaArray* out) {
+  INIT_DIM;
+  EwiseDivKernel EWISE_BINARY_KERNEL;
+}
+
+__global__ void ScalarDivKernel(const scalar_t* a, scalar_t val, scalar_t* out, size_t size) {
+    KERNEL_LEFT = a[gid] / val;
+}
+void ScalarDiv(const CudaArray& a, scalar_t val, CudaArray* out) {
+  INIT_DIM;
+  ScalarDivKernel SCALAR_BINARY_KERNEL;
+}
+//  *   - ScalarPower
+__global__ void ScalarPowerKernel(const scalar_t* a, scalar_t val, scalar_t* out, size_t size) {
+    KERNEL_LEFT = pow(a[gid], val);
+}
+void ScalarPower(const CudaArray& a, scalar_t val, CudaArray* out) {
+  INIT_DIM;
+  ScalarPowerKernel SCALAR_BINARY_KERNEL;
+}
+//  *   - EwiseMaximum, ScalarMaximum
+
+//  *   - EwiseEq, ScalarEq
+
+//  *   - EwiseGe, ScalarGe
+
+//  *   - EwiseLog
+
+//  *   - EwiseExp
+
+//  *   - EwiseTanh
+
 
 /// END YOUR SOLUTION
 
@@ -346,11 +485,11 @@ PYBIND11_MODULE(ndarray_backend_cuda, m) {
   m.def("ewise_add", EwiseAdd);
   m.def("scalar_add", ScalarAdd);
 
-  // m.def("ewise_mul", EwiseMul);
-  // m.def("scalar_mul", ScalarMul);
-  // m.def("ewise_div", EwiseDiv);
-  // m.def("scalar_div", ScalarDiv);
-  // m.def("scalar_power", ScalarPower);
+  m.def("ewise_mul", EwiseMul);
+  m.def("scalar_mul", ScalarMul);
+  m.def("ewise_div", EwiseDiv);
+  m.def("scalar_div", ScalarDiv);
+  m.def("scalar_power", ScalarPower);
 
   // m.def("ewise_maximum", EwiseMaximum);
   // m.def("scalar_maximum", ScalarMaximum);
