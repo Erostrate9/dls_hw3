@@ -427,7 +427,31 @@ void EwiseTanh(const CudaArray& a, CudaArray* out) {
 // Elementwise and scalar operations
 ////////////////////////////////////////////////////////////////////////////////
 
+__global__ void MatmulKernel_naive_vec(const scalar_t* a, const scalar_t* b, scalar_t* out, const size_t M, const size_t N, const size_t P) {
+    size_t gid = blockIdx.x * blockDim.x + threadIdx.x;
+    if(gid < M*P){
+        size_t row = gid / P;
+        size_t col = gid % P;
+        out[gid] = 0;
+        for (size_t k=0; k<N; ++k){
+            out[gid] += a[row*N + k] * b[k * P + col];
+        }
+    }
+}
 
+__global__ void MatmulKernel_naive(const scalar_t* a, const scalar_t* b, scalar_t* out, const size_t M, const size_t N, const size_t P) {
+    size_t bidx = blockIdx.x, bidy = blockIdx.y, tidx = threadIdx.x,
+           tidy = threadIdx.y;
+    auto gidx = bidx * blockDim.x + tidx, gidy = bidy * blockDim.y + tidy;
+    if (gidx >= M || gidy >= P) {
+        return;
+    }
+    scalar_t sum = 0.0f;
+    for (int i = 0; i < N; i++) {
+        sum += a[gidx * N + i] * b[i * P + gidy];
+    }
+    out[gidx * P + gidy] = sum;
+}
 
 void Matmul(const CudaArray& a, const CudaArray& b, CudaArray* out, uint32_t M, uint32_t N,
             uint32_t P) {
@@ -454,7 +478,19 @@ void Matmul(const CudaArray& a, const CudaArray& b, CudaArray* out, uint32_t M, 
    */
 
   /// BEGIN YOUR SOLUTION
-  
+  Fill(out,0.0f);
+
+
+//   if(M < TILE || P < TILE || N < TILE){
+//   }
+  // Threads per block: BASE_THREAD_NUM
+  // Blocks in each dimension: ceil(m*p/BASE_THREAD_NUM)
+//   CudaDims dim = CudaOneDim(M*P);
+// MatmulKernel_naive_vec<<<dim.grid, dim.block>>>(a.ptr, b.ptr, out->ptr, M, N, P);
+    dim3 block(TILE, TILE);
+    dim3 grid((M - 1) / TILE + 1, (P - 1) / TILE + 1);
+    MatmulKernel_naive<<<grid, block>>>(a.ptr, b.ptr, out->ptr, M, N, P);
+
   /// END YOUR SOLUTION
 }
 
