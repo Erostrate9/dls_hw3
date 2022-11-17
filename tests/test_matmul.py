@@ -38,7 +38,7 @@ def test_matmul_compare():
     cpu.matmul_tiled(A2._handle, B2._handle, C2._handle, M, N, P)
     time_end = time.time()
     print('time cost:', (time_end - time_start) * 1000, 'ms')
-    print("------GPU_naive--------")
+    print("------GPU_tiled--------")
     cuda = nd.cuda()
     A3 = nd.array(_A, device=cuda)
     B3 = nd.array(_B, device=cuda)

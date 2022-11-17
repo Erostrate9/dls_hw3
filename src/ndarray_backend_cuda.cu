@@ -427,30 +427,46 @@ void EwiseTanh(const CudaArray& a, CudaArray* out) {
 // Elementwise and scalar operations
 ////////////////////////////////////////////////////////////////////////////////
 
-__global__ void MatmulKernel_naive_vec(const scalar_t* a, const scalar_t* b, scalar_t* out, const size_t M, const size_t N, const size_t P) {
+__global__ void MatmulKernel_naive(const scalar_t* a, const scalar_t* b, scalar_t* out, const size_t M, const size_t N, const size_t P) {
     size_t gid = blockIdx.x * blockDim.x + threadIdx.x;
     if(gid < M*P){
         size_t row = gid / P;
         size_t col = gid % P;
-        out[gid] = 0;
+        out[gid] = 0.0f;
         for (size_t k=0; k<N; ++k){
             out[gid] += a[row*N + k] * b[k * P + col];
         }
     }
 }
 
-__global__ void MatmulKernel_naive(const scalar_t* a, const scalar_t* b, scalar_t* out, const size_t M, const size_t N, const size_t P) {
-    size_t bidx = blockIdx.x, bidy = blockIdx.y, tidx = threadIdx.x,
-           tidy = threadIdx.y;
-    auto gidx = bidx * blockDim.x + tidx, gidy = bidy * blockDim.y + tidy;
-    if (gidx >= M || gidy >= P) {
-        return;
+__global__ void MatmulKernel_tiled(const scalar_t* a, const scalar_t* b, scalar_t* out, const size_t M, const size_t N, const size_t P) {
+    size_t bidx = blockIdx.x, bidy = blockIdx.y,
+           tidx = threadIdx.x, tidy = threadIdx.y;
+    int x_range = static_cast<int>(bidx + 1) * TILE - M,
+        y_range = static_cast<int>(bidy + 1) * TILE - P;
+    if (x_range > 0) {
+        a -= x_range * N;
+        out -= x_range * P;
     }
-    scalar_t sum = 0.0f;
-    for (int i = 0; i < N; i++) {
-        sum += a[gidx * N + i] * b[i * P + gidy];
+    if (y_range > 0) {
+        b -= y_range;
+        out -= y_range;
     }
-    out[gidx * P + gidy] = sum;
+    a += bidx * TILE * N;
+    b += bidy * TILE;
+    out += (bidx * TILE) * P + (bidy * TILE);
+    __shared__ scalar_t smemA[TILE][TILE], smemB[TILE][TILE];
+    scalar_t accumu = 0.0f;
+    for (int i = 0; i < N; i += TILE) {
+        smemA[tidx][tidy] = (tidy + i < N) ? a[(tidx)*N + (tidy + i)] : 0.0f;
+        smemB[tidx][tidy] = (tidx + i < N) ? b[(tidx + i) * P + tidy] : 0.0f;
+        __syncthreads();
+        for (int j = 0; j < TILE; j++) {
+            accumu += smemA[tidx][j] * smemB[j][tidy];
+        }
+        __syncthreads();
+    }
+    out[tidx * P + tidy] = accumu;
 }
 
 void Matmul(const CudaArray& a, const CudaArray& b, CudaArray* out, uint32_t M, uint32_t N,
@@ -481,16 +497,16 @@ void Matmul(const CudaArray& a, const CudaArray& b, CudaArray* out, uint32_t M, 
   Fill(out,0.0f);
 
 
-//   if(M < TILE || P < TILE || N < TILE){
-//   }
-  // Threads per block: BASE_THREAD_NUM
-  // Blocks in each dimension: ceil(m*p/BASE_THREAD_NUM)
-//   CudaDims dim = CudaOneDim(M*P);
-// MatmulKernel_naive_vec<<<dim.grid, dim.block>>>(a.ptr, b.ptr, out->ptr, M, N, P);
+  if(M < TILE || P < TILE || N < TILE){
+  // Threads per block: BASE_THREAD_NUM = 256
+  // Blocks in each dimension: ceil( (float) M*P / BASE_THREAD_NUM)
+    CudaDims dim = CudaOneDim(M*P);
+    MatmulKernel_naive<<<dim.grid, dim.block>>>(a.ptr, b.ptr, out->ptr, M, N, P);
+  }else{
     dim3 block(TILE, TILE);
     dim3 grid((M - 1) / TILE + 1, (P - 1) / TILE + 1);
-    MatmulKernel_naive<<<grid, block>>>(a.ptr, b.ptr, out->ptr, M, N, P);
-
+    MatmulKernel_tiled<<<grid, block>>>(a.ptr, b.ptr, out->ptr, M, N, P);
+  }
   /// END YOUR SOLUTION
 }
 
