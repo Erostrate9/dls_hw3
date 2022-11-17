@@ -342,24 +342,84 @@ void ScalarDiv(const CudaArray& a, scalar_t val, CudaArray* out) {
 }
 //  *   - ScalarPower
 __global__ void ScalarPowerKernel(const scalar_t* a, scalar_t val, scalar_t* out, size_t size) {
-    KERNEL_LEFT = pow(a[gid], val);
+    KERNEL_LEFT = powf(a[gid], val);
 }
 void ScalarPower(const CudaArray& a, scalar_t val, CudaArray* out) {
   INIT_DIM;
   ScalarPowerKernel SCALAR_BINARY_KERNEL;
 }
 //  *   - EwiseMaximum, ScalarMaximum
+__global__ void EwiseMaximumKernel(const scalar_t* a, const scalar_t* b, scalar_t* out, size_t size) {
+    KERNEL_LEFT = max(a[gid], b[gid]);
+}
+void EwiseMaximum(const CudaArray& a, const CudaArray& b, CudaArray* out) {
+  INIT_DIM;
+  EwiseMaximumKernel EWISE_BINARY_KERNEL;
+}
 
+__global__ void ScalarMaximumKernel(const scalar_t* a, scalar_t val, scalar_t* out, size_t size) {
+    KERNEL_LEFT = max(a[gid], val);
+}
+void ScalarMaximum(const CudaArray& a, scalar_t val, CudaArray* out) {
+  INIT_DIM;
+  ScalarMaximumKernel SCALAR_BINARY_KERNEL;
+}
 //  *   - EwiseEq, ScalarEq
+__global__ void EwiseEqKernel(const scalar_t* a, const scalar_t* b, scalar_t* out, size_t size) {
+    KERNEL_LEFT = (a[gid] == b[gid]);
+}
+void EwiseEq(const CudaArray& a, const CudaArray& b, CudaArray* out) {
+  INIT_DIM;
+  EwiseEqKernel EWISE_BINARY_KERNEL;
+}
 
+__global__ void ScalarEqKernel(const scalar_t* a, scalar_t val, scalar_t* out, size_t size) {
+    KERNEL_LEFT = (a[gid] == val);
+}
+void ScalarEq(const CudaArray& a, scalar_t val, CudaArray* out) {
+  INIT_DIM;
+  ScalarEqKernel SCALAR_BINARY_KERNEL;
+}
 //  *   - EwiseGe, ScalarGe
+__global__ void EwiseGeKernel(const scalar_t* a, const scalar_t* b, scalar_t* out, size_t size) {
+    KERNEL_LEFT = (a[gid] >= b[gid]);
+}
+void EwiseGe(const CudaArray& a, const CudaArray& b, CudaArray* out) {
+  INIT_DIM;
+  EwiseGeKernel EWISE_BINARY_KERNEL;
+}
 
+__global__ void ScalarGeKernel(const scalar_t* a, scalar_t val, scalar_t* out, size_t size) {
+    KERNEL_LEFT = (a[gid] >= val);
+}
+void ScalarGe(const CudaArray& a, scalar_t val, CudaArray* out) {
+  INIT_DIM;
+  ScalarGeKernel SCALAR_BINARY_KERNEL;
+}
 //  *   - EwiseLog
-
+__global__ void EwiseLogKernel(const scalar_t* a, scalar_t* out, size_t size) {
+    KERNEL_LEFT = logf(a[gid]);
+}
+void EwiseLog(const CudaArray& a, CudaArray* out) {
+  INIT_DIM;
+  EwiseLogKernel EWISE_UNARY_KERNEL;
+}
 //  *   - EwiseExp
-
+__global__ void EwiseExpKernel(const scalar_t* a, scalar_t* out, size_t size) {
+    KERNEL_LEFT = expf(a[gid]);
+}
+void EwiseExp(const CudaArray& a, CudaArray* out) {
+  INIT_DIM;
+  EwiseExpKernel EWISE_UNARY_KERNEL;
+}
 //  *   - EwiseTanh
-
+__global__ void EwiseTanhKernel(const scalar_t* a, scalar_t* out, size_t size) {
+    KERNEL_LEFT = tanhf(a[gid]);
+}
+void EwiseTanh(const CudaArray& a, CudaArray* out) {
+  INIT_DIM;
+  EwiseTanhKernel EWISE_UNARY_KERNEL;
+}
 
 /// END YOUR SOLUTION
 
@@ -491,16 +551,16 @@ PYBIND11_MODULE(ndarray_backend_cuda, m) {
   m.def("scalar_div", ScalarDiv);
   m.def("scalar_power", ScalarPower);
 
-  // m.def("ewise_maximum", EwiseMaximum);
-  // m.def("scalar_maximum", ScalarMaximum);
-  // m.def("ewise_eq", EwiseEq);
-  // m.def("scalar_eq", ScalarEq);
-  // m.def("ewise_ge", EwiseGe);
-  // m.def("scalar_ge", ScalarGe);
+  m.def("ewise_maximum", EwiseMaximum);
+  m.def("scalar_maximum", ScalarMaximum);
+  m.def("ewise_eq", EwiseEq);
+  m.def("scalar_eq", ScalarEq);
+  m.def("ewise_ge", EwiseGe);
+  m.def("scalar_ge", ScalarGe);
 
-  // m.def("ewise_log", EwiseLog);
-  // m.def("ewise_exp", EwiseExp);
-  // m.def("ewise_tanh", EwiseTanh);
+  m.def("ewise_log", EwiseLog);
+  m.def("ewise_exp", EwiseExp);
+  m.def("ewise_tanh", EwiseTanh);
 
   m.def("matmul", Matmul);
 
