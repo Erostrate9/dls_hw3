@@ -11,7 +11,7 @@ namespace cuda {
 
 #define BASE_THREAD_NUM 256
 
-#define TILE 4
+#define TILE 16
 typedef float scalar_t;
 const size_t ELEM_SIZE = sizeof(scalar_t);
 
@@ -438,35 +438,47 @@ __global__ void MatmulKernel_naive(const scalar_t* a, const scalar_t* b, scalar_
         }
     }
 }
-
 __global__ void MatmulKernel_tiled(const scalar_t* a, const scalar_t* b, scalar_t* out, const size_t M, const size_t N, const size_t P) {
-    size_t bidx = blockIdx.x, bidy = blockIdx.y,
-           tidx = threadIdx.x, tidy = threadIdx.y;
-    int x_range = static_cast<int>(bidx + 1) * TILE - M,
-        y_range = static_cast<int>(bidy + 1) * TILE - P;
-    if (x_range > 0) {
-        a -= x_range * N;
-        out -= x_range * P;
+     // Compute each thread's global row and column index
+    size_t row =  blockIdx.y * blockDim.y + threadIdx.y,
+           col =  blockIdx.x * blockDim.x + threadIdx.x;
+    int y_empty = static_cast<int>( blockIdx.y + 1) * TILE - M,
+        x_empty = static_cast<int>( blockIdx.x + 1) * TILE - P;
+    if (y_empty > 0) {
+        a -= y_empty * N;
+        out -= y_empty *P;
     }
-    if (y_range > 0) {
-        b -= y_range;
-        out -= y_range;
+    if (x_empty > 0) {
+        b -= x_empty;
+        out -= x_empty;
     }
-    a += bidx * TILE * N;
-    b += bidy * TILE;
-    out += (bidx * TILE) * P + (bidy * TILE);
-    __shared__ scalar_t smemA[TILE][TILE], smemB[TILE][TILE];
-    scalar_t accumu = 0.0f;
+    // Statically allocated shared memory s_a:S * L, s_b:L * S
+    __shared__ scalar_t s_a[TILE*TILE], s_b[TILE*TILE];
+    scalar_t tmp = 0.0f;
     for (int i = 0; i < N; i += TILE) {
-        smemA[tidx][tidy] = (tidy + i < N) ? a[(tidx)*N + (tidy + i)] : 0.0f;
-        smemB[tidx][tidy] = (tidx + i < N) ? b[(tidx + i) * P + tidy] : 0.0f;
+    // Load in elements for this tile
+    s_a[ threadIdx.y * blockDim.x + threadIdx.x ] = a[row * N + i + threadIdx.x];
+    s_b[ threadIdx.y * blockDim.x + threadIdx.x ] = b[(threadIdx.y + i) * P + col];
+        // Wait for both tiles to be loaded in before doing computation
         __syncthreads();
+         // Do matrix multiplication on the small matrix
         for (int j = 0; j < TILE; j++) {
-            accumu += smemA[tidx][j] * smemB[j][tidy];
+            tmp += s_a[threadIdx.y * blockDim.x + j] * s_b[j * blockDim.x + threadIdx.x];
         }
+        // Wait for all threads to finish using current tiles before loading in new ones
         __syncthreads();
     }
-    out[tidx * P + tidy] = accumu;
+    out[row * P + col] = tmp;
+}
+
+void MatmulNaive(const CudaArray& a, const CudaArray& b, CudaArray* out, uint32_t M, uint32_t N,
+            uint32_t P) {
+    Fill(out,0.0f);
+  // Threads per block: BASE_THREAD_NUM = 256
+  // Blocks in each dimension: ceil( (float) M*P / BASE_THREAD_NUM)
+    CudaDims dim = CudaOneDim(M*P);
+    MatmulKernel_naive<<<dim.grid, dim.block>>>(a.ptr, b.ptr, out->ptr, M, N, P);
+  /// END YOUR SOLUTION
 }
 
 void Matmul(const CudaArray& a, const CudaArray& b, CudaArray* out, uint32_t M, uint32_t N,
@@ -634,6 +646,7 @@ PYBIND11_MODULE(ndarray_backend_cuda, m) {
   m.def("ewise_tanh", EwiseTanh);
 
   m.def("matmul", Matmul);
+  m.def("matmul_naive", MatmulNaive);
 
   m.def("reduce_max", ReduceMax);
   m.def("reduce_sum", ReduceSum);
