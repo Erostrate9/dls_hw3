@@ -55,8 +55,7 @@ def test_matmul_repeat():
         # del A3, B3, C3
     print("numpy:%f s; torch: %f s; cuda_naive:%f s; cuda_shared:%f s"%(time_np, time_torch, time_cuda_naive,
                                                                         time_cuda_shared))
-    np.testing.assert_allclose(C3.numpy(), _C, rtol=1e-5, atol=1e-5)
-
+    np.testing.assert_allclose(C2.numpy(), _C, rtol=1e-5, atol=1e-5)
 
 def test_matmul_compare():
     t = 8
