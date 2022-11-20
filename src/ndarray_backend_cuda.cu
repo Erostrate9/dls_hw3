@@ -11,7 +11,7 @@ namespace cuda {
 
 #define BASE_THREAD_NUM 256
 
-#define TILE 16
+#define TILE 32
 typedef float scalar_t;
 const size_t ELEM_SIZE = sizeof(scalar_t);
 
@@ -442,6 +442,7 @@ __global__ void MatmulKernel_tiled(const scalar_t* a, const scalar_t* b, scalar_
      // Compute each thread's global row and column index
     size_t row =  blockIdx.y * blockDim.y + threadIdx.y,
            col =  blockIdx.x * blockDim.x + threadIdx.x;
+    // We don't denote that M or P can be divided by TILE evenly.
     int y_empty = static_cast<int>( blockIdx.y + 1) * TILE - M,
         x_empty = static_cast<int>( blockIdx.x + 1) * TILE - P;
     if (y_empty > 0) {
